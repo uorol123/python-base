@@ -4,6 +4,8 @@
 #
 # 前面我们看到了：Python 每次做 n += 1，都要 malloc 一个新的 PyLongObject，
 # 填值、更新引用计数。500 万次累加耗时 0.5 秒。
+# GPT 修正：缓存范围内的结果会复用小整数单例；超出后大多数累计结果需要新对象。
+# 分配也经由 CPython 对象分配器，不应一概等同于每次直接调用系统 malloc。
 #
 # 本课回答：numpy 为什么能快几十倍？它底层怎么"绕开"Python 的对象模型？
 #
@@ -54,6 +56,9 @@ for i, x in enumerate(py_list):
 print()
 # 小整数 5/6/7 在缓存里（都是 28 字节），但它们是 3 个独立对象，
 # 散落在堆的不同地址。访问 list[0] 要：先读 ob_item[0] 拿指针，再跳过去读对象。
+# GPT 修正：5/6/7 确实是三个不同的 int 单例，但 CPython 3.13 的 small_ints
+# 位于全局数组中，这个例子不能证明它们“散落在堆上”。更一般的结论是：list
+# 只保证指针数组连续，不保证所引用对象的地址连续。
 
 
 # ---------- 2. numpy ndarray 的内存布局：一块连续的 C 数组 ----------
@@ -74,6 +79,8 @@ import numpy as np  # pylint: disable=import-error
 np_arr = np.array([5, 6, 7], dtype=np.int64)
 print('=== 2. numpy ndarray 的内存布局 ===')
 print(f'ndarray 本身（Python 对象）: {sys.getsizeof(np_arr)} 字节   ← 固定开销，跟元素个数无关')
+# GPT 修正：ndarray 元数据头的开销近似固定，但拥有数据的数组中，
+# sys.getsizeof(ndarray) 通常还计入自有数据缓冲区，因此该返回值会随元素数增长。
 print(f'数据区（裸 C 数组）       : {np_arr.nbytes} 字节   ← 3 个 int64 × 8 字节 = 24 字节')
 print(f'dtype = {np_arr.dtype}, itemsize = {np_arr.itemsize} 字节/元素')
 print()
@@ -87,6 +94,8 @@ print(f'  Python list : {sys.getsizeof(py_list)} (list含指针数组) + 3×{sys
 # 注意：sys.getsizeof(ndarray) 返回的已经包含了数据缓冲区，不能再加 nbytes！
 #   numpy 的 __sizeof__ 文档明确写了：includes memory consumed by the object's data buffer.
 #   所以总内存 = sys.getsizeof(arr) 一步到位，不像 list 需要逐个元素另算。
+# GPT 修正：这只适用于拥有自身数据缓冲区的 ndarray。切片/view 的数据由 base 对象持有，
+# 此时 sys.getsizeof(view) 不代表共享底层缓冲区的总占用，不能“一步到位”。
 print(f'  numpy array : {sys.getsizeof(np_arr)} 字节   ← 已包含对象头+数据区，不用另加')
 print(f'              (对象头≈{sys.getsizeof(np_arr)-np_arr.nbytes}B + 数据区{np_arr.nbytes}B)')
 print()
@@ -118,6 +127,8 @@ big_list = list(range(N))
 big_arr = np.arange(N, dtype=np.int64)
 
 # Python list 的总内存 = list 本身(指针数组) + 每个元素指向的 int 对象(各 28 字节)
+# GPT 修正：这是当前 64 位 CPython、且数值都在单 digit 范围内的近似。
+# 还会少量重复计算全局小整数单例；若列表共享元素、整数更大或解释器不同，公式需调整。
 list_mem = sys.getsizeof(big_list) + N * 28
 # numpy 的总内存 = sys.getsizeof(ndarray)，已包含数据缓冲区（numpy __sizeof__ 文档明确说明）
 arr_mem = sys.getsizeof(big_arr)
@@ -133,6 +144,8 @@ print()
 # 回到第 1 课那个 0.5 秒的 500 万累加。
 # Python 每一步：LOAD → long_add → _PyLong_New(malloc) → STORE → 引用计数更新
 # numpy 的 sum：一个 C 循环遍历连续数组，CPU 流水线 + SIMD 直接跑，没有对象开销。
+# GPT 修正：第一句是一般化示意，忽略了小整数复用、解释器专门化和对象分配器。
+# NumPy 的 SIMD 能否启用取决于构建、CPU、dtype 和具体 ufunc/reduction 路径。
 
 print(f'=== 5. 运算性能对比（{N:,} 个元素求和）===')
 
@@ -145,12 +158,16 @@ t1 = time.perf_counter()
 print(f'Python for 循环累加: {t1-t0:.3f} 秒, 结果 = {s}')
 
 # Python 内置 sum（也是 Python 层循环，但优化过一点）
+# GPT 修正：sum 是 C 实现的内建函数；在当前 CPython 中还对 int/float 累加有专门快路径，
+# 不能描述成普通 Python 层循环。它仍要遍历 Python iterable，并遵守 Python 数值语义。
 t0 = time.perf_counter()
 s = sum(big_list)
 t1 = time.perf_counter()
 print(f'Python sum():        {t1-t0:.3f} 秒, 结果 = {s}')
 
 # numpy sum（C 层面批量运算）
+# GPT 修正：np.sum(np.int64) 使用固定宽度累加器，可能发生整数回绕溢出；
+# Python int / built-in sum 保持任意精度。这是性能对比必须同时记录的语义差异。
 t0 = time.perf_counter()
 s = int(np.sum(big_arr))
 t1 = time.perf_counter()
@@ -162,6 +179,8 @@ print('  1. 数据连续排列，CPU 缓存命中率高（预取生效）')
 print('  2. 没有 malloc/引用计数/对象头开销')
 print('  3. 运算在 C 层循环，甚至用 SIMD（一条指令处理多个数据）')
 print('  4. 中间结果不创建 Python 对象，只在最后返回时转一次')
+# GPT 修正：更准确地说，reduction 的数值核心不会为每个元素创建 Python int；
+# 调用边界、返回的 NumPy scalar，以及某些特殊 dtype/object 路径仍会涉及 Python 对象。
 print()
 
 
@@ -182,6 +201,8 @@ print('=== 6. Python 循环的字节码（每次迭代都走这一遍）===')
 dis.dis(loop_sum)
 print()
 print('↑ 每次迭代：FOR_ITER → STORE_NAME(x) → LOAD_NAME(s) → LOAD_NAME(x) → INPLACE_ADD → STORE_NAME(s)')
+# GPT 修正（Python 3.13）：函数局部通常显示 STORE_FAST/LOAD_FAST 和 BINARY_OP(+=)，
+# 不再是这里写的 STORE_NAME/LOAD_NAME/INPLACE_ADD；应以本机 dis 输出为准。
 print('  光是循环体就有 5+ 条字节码，每条都要解释器分发一次。')
 print('  numpy 的 np.sum() 整个循环体是 C 编译后的机器码，没有字节码分发开销。')
 print()
@@ -192,8 +213,12 @@ print('=== 总结：numpy 绕开了什么 ===')
 print('Python 的"万物皆对象"是优雅的设计，但运算时有 3 层税：')
 print('  ① 每个数字 ≥28 字节（对象头）           → 内存浪费')
 print('  ② 每次运算 malloc 新对象 + 引用计数      → CPU 开销')
+# GPT 修正：应读作“许多超出缓存范围的 Python int 运算需要分配结果对象并维护引用计数”，
+# 不是所有运算都直接 malloc，也不是所有结果都创建新身份对象。
 print('  ③ 每步循环走字节码分发                    → 解释器开销')
 print()
 print('numpy 的做法：数据用 C 的连续数组（int64 = 8 字节/个，无对象头），')
 print('              运算用 C 循环（无 malloc、无字节码、有 SIMD）。')
+# GPT 修正：核心循环通常没有逐元素 Python 对象分配和字节码分发；SIMD 是条件性优化，
+# 且固定宽度 dtype 带来溢出、精度和类型提升规则，不能只比较速度。
 print('              这就是为什么 numpy 是 Python 科学计算的基石。')

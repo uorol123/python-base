@@ -74,6 +74,8 @@ class PersonProperty:
 # 原理：
 #   Typed 是一个数据描述符（有 __get__ + __set__）
 #   它"包裹"住字段，拦截所有读写
+# GPT 修正：这里的“所有读写”指正常的实例属性协议；直接修改 obj.__dict__、
+# 修改类上的描述符等操作仍可绕开。描述符不是安全边界。
 #   值存在 实例自己的 __dict__ 里（不是存在 _xxx 私有变量里）
 #
 # 关键改进：
@@ -139,6 +141,9 @@ class PersonTyped:
 #   方式三里你只需写 name: str，TypedModel 自动帮你做 name = Typed(str)
 #
 # 这就是 pydantic BaseModel 的核心思路（pydantic 做得更完整、性能更好）
+# GPT 修正：TypedModel 只是“根据注解生成运行时校验器”的教学类比。
+# Pydantic v2 的核心是模型元类收集字段、构建 schema/validator，并由
+# pydantic-core 执行解析与校验，不能归结为给每个字段安装数据描述符。
 
 class TypedModel:
     """基类：子类只需写注解，自动获得类型校验"""

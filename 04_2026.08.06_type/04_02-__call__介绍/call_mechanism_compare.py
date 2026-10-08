@@ -4,6 +4,9 @@
 核心结论：obj()  →  type(obj).__call__(obj)
 () 这个操作符背后永远走 __call__，而且是「对象自己类型」的 __call__。
 
+GPT 修正：上式是语义层面的近似模型。CPython 实际优先使用类型的 tp_call/vectorcall
+槽位，不会在每次调用时真的执行一次 Python 表达式 type(obj).__call__(obj)。
+
 本文件对比三种对象的 () 行为：
   - 函数 func()
   - 类     Dog()
@@ -65,6 +68,8 @@ print(f"Dog()               → {d1}")
 d2 = type.__call__(Dog)          # 直接调元类的 __call__
 print(f"type.__call__(Dog)  → {d2}")
 print("→ 两者完全等价：Dog() 本质就是 type.__call__(Dog)")
+# GPT 修正：此处仅对当前“Dog 的元类就是 type，且没有覆盖调用协议”的示例成立。
+# 若类使用覆盖了 __call__ 的自定义元类，应显式调用 type(Dog).__call__(Dog)。
 
 
 # ============================================================

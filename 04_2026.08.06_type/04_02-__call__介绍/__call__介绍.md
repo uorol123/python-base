@@ -7,6 +7,8 @@
 ## 问题：() 是 __call__ 的语法糖吗？—— 是，但有查找规则
 obj() 找的是 type(obj).__call__，不是 obj.__call__。
 
+> **GPT 修正**：作为 Python 层心智模型这句话成立。CPython 实现上，调用表达式先走对象类型的调用槽位（`tp_call`/vectorcall）；`__call__` 是该协议暴露到 Python 层的接口。不要把每次 `obj()` 都理解成真的先构造并执行 `type(obj).__call__(obj)` 这段 Python 代码。
+
   也就是说，() 在「对象的类型」上找 __call__，而不是在对象自己身上找。Demo ② 证明了这一点：你给实例 d 塞一个 d.__call__，d() 照样失败——因为查找发生在 type(d) 上，实例自己的 __call__ 被无视。
 
   obj()  →  type(obj).__call__(obj)     ← 永远在类型上找
@@ -30,6 +32,8 @@ type的 __call__ 一般调用 __new__ 和 __init__
 有__call__的就跟__call__走。实例的type，就是类不提供则报错is not callable。然后具体做什么就看__call__怎么写的。
 然后为什么初始的类也会被创建对象？
 这是因为：class是语法糖，本质在调用type(),然后这个()也是语法糖，调用了type的__call__,因此字节码执行到class和后续类实例化()最终都会到type.__call__,不过__new__和__init__的主体是type，元类，类，主体不一样罢了。
+
+> **GPT 修正**：定义类时最终调用的是“选定元类”的调用协议，不保证是 `type.__call__`；实例化类时调用的是 `type(类对象)` 的调用协议。自定义元类覆盖 `__call__` 时，这一点会直接表现出来。
 
 # 问题
 那么function 和 def 又是什么呢，

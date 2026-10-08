@@ -11,6 +11,8 @@ class Sample:
       class Inner: pass      #  → {'Inner': <class>}       值是 class
 
 # 之前了解到 class是type的语法糖。这里实际就已经通过type的 __new__ 和 __init__ 来创建对象了
+# GPT 修正：这是默认元类场景的近似。真实 class 语句先经过 __build_class__、
+# 元类选择和 __prepare__，最后调用选定元类；该元类不一定是 type。
 # 三个参数
 #  name = Sample
 # dict = {'count': 0,'name': '样本','hello': <function>,'Inner': <class>}（重复的class）

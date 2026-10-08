@@ -19,6 +19,8 @@ type(
 **演示： type_use.py**
 
 所有的 class 语句，底层都是 type(...) ,用class可读性更好，class是保留的关键字，是type的语法糖
+
+> **GPT 修正**：`type(...)` 只是在“默认元类 + 普通命名空间”场景下便于理解的近似。严格流程是 `__build_class__ → 选择元类 → metaclass.__prepare__ → 执行类体 → 调用元类`，最终元类可能是 `type` 的子类而不是 `type` 本身。
 TODO：type和object的源码阅读
 
 
